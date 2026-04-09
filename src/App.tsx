@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import AccountingAnalyzer from './components/AccountingAnalyzer';
 import AdAnalyzer from './components/AdAnalyzer';
+import InventoryAnalyzer from './components/InventoryAnalyzer';
 import { I18nProvider, useI18n } from './i18n';
 
-type AppMode = 'accounting' | 'ads';
+type AppMode = 'accounting' | 'ads' | 'inventory';
 
 function AppInner() {
   const { lang, setLang, t } = useI18n();
@@ -52,12 +53,23 @@ function AppInner() {
           >
             📢 {isEn ? 'Ad Report Analysis' : '廣告報告分析'}
           </button>
+          <button
+            onClick={() => setMode('inventory')}
+            className={`flex-1 px-4 py-3 text-center transition-all duration-200 border-b-3 text-sm font-medium ${
+              mode === 'inventory'
+                ? 'border-amazon-orange text-amazon-dark bg-orange-50/50'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            📦 {isEn ? 'Restock Planner' : '庫存補貨'}
+          </button>
         </div>
       </nav>
 
       <main className="max-w-6xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
         {mode === 'accounting' && <AccountingAnalyzer />}
         {mode === 'ads' && <AdAnalyzer />}
+        {mode === 'inventory' && <InventoryAnalyzer />}
       </main>
 
       <footer className="text-center text-xs text-gray-400 py-6 border-t">
