@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { AdRow, AdSummary, KeywordPerformance } from '../data/adTypes';
 import { parseAdReport, summarizeAdReport, analyzeKeywords } from '../data/adParser';
+import { readFileAsText } from '../data/fileHelper';
 import { useI18n } from '../i18n';
 
 type ViewMode = 'upload' | 'dashboard';
@@ -16,26 +17,22 @@ export default function AdAnalyzer() {
   const [error, setError] = useState('');
   const [targetAcos, setTargetAcos] = useState(30);
 
-  const handleFile = useCallback((file: File) => {
+  const handleFile = useCallback(async (file: File) => {
     setError('');
     setFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const text = e.target?.result as string;
-        const parsed = parseAdReport(text);
-        if (parsed.length === 0) {
-          setError(isEn ? 'Unable to parse. Please confirm it is a Sponsored Products report (CSV/TSV).' : '無法解析，請確認是 Sponsored Products 廣告報告（CSV/TSV 格式）。');
-          return;
-        }
-        setRows(parsed);
-        setSummary(summarizeAdReport(parsed));
-        setViewMode('dashboard');
-      } catch {
-        setError(isEn ? 'File parsing failed.' : '檔案解析失敗。');
+    try {
+      const text = await readFileAsText(file);
+      const parsed = parseAdReport(text);
+      if (parsed.length === 0) {
+        setError(isEn ? 'Unable to parse. Please confirm it is a Sponsored Products report.' : '無法解析，請確認是 Sponsored Products 廣告報告。');
+        return;
       }
-    };
-    reader.readAsText(file);
+      setRows(parsed);
+      setSummary(summarizeAdReport(parsed));
+      setViewMode('dashboard');
+    } catch {
+      setError(isEn ? 'File parsing failed.' : '檔案解析失敗。');
+    }
   }, [isEn]);
 
   const onDrop = useCallback((e: React.DragEvent) => {
@@ -72,10 +69,10 @@ export default function AdAnalyzer() {
         >
           <div className="text-5xl mb-4">📢</div>
           <p className="text-lg font-medium text-gray-700 mb-2">{isEn ? 'Drop your ad report here' : '將廣告報告拖放至此'}</p>
-          <p className="text-sm text-gray-400 mb-4">{isEn ? 'Supports Sponsored Products Search Term / Targeting reports (.csv/.tsv)' : '支援 Sponsored Products 搜尋詞報告 / Targeting 報告（.csv/.tsv）'}</p>
+          <p className="text-sm text-gray-400 mb-4">{isEn ? 'Supports Excel (.xlsx/.xls) and CSV/TSV reports' : '支援 Excel（.xlsx/.xls）和 CSV/TSV 格式'}</p>
           <label className="inline-block px-6 py-2 bg-amazon-orange text-white rounded-lg cursor-pointer hover:bg-orange-500 transition">
             {isEn ? 'Choose file' : '選擇檔案'}
-            <input type="file" accept=".csv,.tsv,.txt" onChange={onFileInput} className="hidden" />
+            <input type="file" accept=".csv,.tsv,.txt,.xlsx,.xls" onChange={onFileInput} className="hidden" />
           </label>
         </div>
         {error && <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">⚠️ {error}</div>}
@@ -85,7 +82,8 @@ export default function AdAnalyzer() {
             <li>{isEn ? 'Go to Seller Central → Advertising → Campaign Manager' : '前往 Seller Central → 廣告 → Campaign Manager'}</li>
             <li>{isEn ? 'Click "Measurement & Reporting" → "Sponsored ads reports"' : '點擊「衡量和報告」→「贊助廣告報告」'}</li>
             <li>{isEn ? 'Create report: Search Term or Targeting, select date range' : '建立報告：搜尋詞報告或 Targeting 報告，選擇日期範圍'}</li>
-            <li>{isEn ? 'Download and upload the CSV file here' : '下載 CSV 檔案後上傳至此'}</li>
+            <li>{isEn ? 'Download the report (Excel .xlsx or CSV)' : '下載報告（Excel .xlsx 或 CSV 格式皆可）'}</li>
+            <li>{isEn ? 'Upload the file here — both Excel and CSV are supported' : '直接上傳檔案至此 — 支援 Excel 和 CSV，不需要手動轉換格式'}</li>
           </ol>
         </div>
       </div>

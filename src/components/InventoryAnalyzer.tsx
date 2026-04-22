@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { InventoryRow, RestockResult } from '../data/inventoryTypes';
 import { parseInventoryReport, calcRestock, exportRestockCSV } from '../data/inventoryParser';
+import { readFileAsText } from '../data/fileHelper';
 import { useI18n } from '../i18n';
 
 export default function InventoryAnalyzer() {
@@ -15,25 +16,21 @@ export default function InventoryAnalyzer() {
   const [safetyDays, setSafetyDays] = useState(14);
   const [targetDays, setTargetDays] = useState(60);
 
-  const handleFile = useCallback((file: File) => {
+  const handleFile = useCallback(async (file: File) => {
     setError('');
     setFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const text = e.target?.result as string;
-        const parsed = parseInventoryReport(text);
-        if (parsed.length === 0) {
-          setError(isEn ? 'Unable to parse. Please confirm it is an Inventory Health Report.' : '無法解析，請確認是 Inventory Health Report（庫存健康報告）。');
-          return;
-        }
-        setRows(parsed);
-        setViewMode('dashboard');
-      } catch {
-        setError(isEn ? 'File parsing failed.' : '檔案解析失敗。');
+    try {
+      const text = await readFileAsText(file);
+      const parsed = parseInventoryReport(text);
+      if (parsed.length === 0) {
+        setError(isEn ? 'Unable to parse. Please confirm it is an Inventory Health Report.' : '無法解析，請確認是 Inventory Health Report（庫存健康報告）。');
+        return;
       }
-    };
-    reader.readAsText(file);
+      setRows(parsed);
+      setViewMode('dashboard');
+    } catch {
+      setError(isEn ? 'File parsing failed.' : '檔案解析失敗。');
+    }
   }, [isEn]);
 
   const onDrop = useCallback((e: React.DragEvent) => {
@@ -79,10 +76,10 @@ export default function InventoryAnalyzer() {
         >
           <div className="text-5xl mb-4">📦</div>
           <p className="text-lg font-medium text-gray-700 mb-2">{isEn ? 'Drop your inventory report here' : '將庫存報告拖放至此'}</p>
-          <p className="text-sm text-gray-400 mb-4">{isEn ? 'Supports Inventory Health Report, FBA Inventory (.csv/.tsv)' : '支援 Inventory Health Report、FBA 庫存報告（.csv/.tsv）'}</p>
+          <p className="text-sm text-gray-400 mb-4">{isEn ? 'Supports Excel (.xlsx/.xls) and CSV/TSV formats' : '支援 Excel（.xlsx/.xls）和 CSV/TSV 格式'}</p>
           <label className="inline-block px-6 py-2 bg-amazon-orange text-white rounded-lg cursor-pointer hover:bg-orange-500 transition">
             {isEn ? 'Choose file' : '選擇檔案'}
-            <input type="file" accept=".csv,.tsv,.txt" onChange={onFileInput} className="hidden" />
+            <input type="file" accept=".csv,.tsv,.txt,.xlsx,.xls" onChange={onFileInput} className="hidden" />
           </label>
         </div>
         {error && <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">⚠️ {error}</div>}

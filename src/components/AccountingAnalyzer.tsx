@@ -16,6 +16,7 @@ import {
   exportVATByCountryCSV,
   exportTransactionDetailCSV,
 } from '../data/accountingHelpers';
+import { readFileAsText } from '../data/fileHelper';
 import { useI18n } from '../i18n';
 
 type ViewMode = 'upload' | 'summary' | 'detail' | 'glossary';
@@ -49,26 +50,22 @@ export default function AccountingAnalyzer() {
   const [showRatePanel, setShowRatePanel] = useState(false);
   const isEn = lang === 'en';
 
-  const handleFile = useCallback((file: File) => {
+  const handleFile = useCallback(async (file: File) => {
     setError('');
     setFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const text = e.target?.result as string;
-        const parsed = parseSettlementCSV(text);
-        if (parsed.length === 0) {
-          setError(isEn ? 'Unable to parse the file. Please confirm it is an Amazon Settlement Report in CSV/TSV format.' : '無法解析檔案，請確認是 Amazon Settlement Report 的 CSV/TSV 格式。');
-          return;
-        }
-        setRows(parsed);
-        setSummary(summarizeTransactions(parsed));
-        setViewMode('summary');
-      } catch {
-        setError(isEn ? 'File parsing failed. Please check the format.' : '檔案解析失敗，請確認格式正確。');
+    try {
+      const text = await readFileAsText(file);
+      const parsed = parseSettlementCSV(text);
+      if (parsed.length === 0) {
+        setError(isEn ? 'Unable to parse the file. Please confirm it is an Amazon Settlement Report.' : '無法解析檔案，請確認是 Amazon Settlement Report（支援 Excel 和 CSV/TSV 格式）。');
+        return;
       }
-    };
-    reader.readAsText(file);
+      setRows(parsed);
+      setSummary(summarizeTransactions(parsed));
+      setViewMode('summary');
+    } catch {
+      setError(isEn ? 'File parsing failed. Please check the format.' : '檔案解析失敗，請確認格式正確。');
+    }
   }, [isEn]);
 
   const onDrop = useCallback((e: React.DragEvent) => {
@@ -108,7 +105,7 @@ export default function AccountingAnalyzer() {
           <p className="text-sm text-gray-400 mb-4">{t('fileFormats')}</p>
           <label className="inline-block px-6 py-2 bg-amazon-orange text-white rounded-lg cursor-pointer hover:bg-orange-500 transition">
             {t('orChooseFile')}
-            <input type="file" accept=".csv,.tsv,.txt" onChange={onFileInput} className="hidden" />
+            <input type="file" accept=".csv,.tsv,.txt,.xlsx,.xls" onChange={onFileInput} className="hidden" />
           </label>
         </div>
 
