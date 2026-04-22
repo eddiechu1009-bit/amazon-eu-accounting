@@ -76,9 +76,9 @@ function AppInner() {
         {t('footerLine1')}
         <br />{t('footerLine2')}
         <div className="mt-4 flex flex-wrap justify-center gap-3">
-          <a href="https://eddiechu1009-bit.github.io/amazon-eu-tools/" target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-gray-100 hover:bg-amazon-orange/10 hover:text-amazon-dark rounded-lg transition-all duration-200">🇪🇺 新賣家準備工具</a>
-          <a href="https://eddiechu1009-bit.github.io/amazon-eu-seller-toolkit/" target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-gray-100 hover:bg-amazon-orange/10 hover:text-amazon-dark rounded-lg transition-all duration-200">🛠️ 營運工具箱</a>
-          <a href="https://eddiechu1009-bit.github.io/amazon-case-writer/" target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-gray-100 hover:bg-amazon-orange/10 hover:text-amazon-dark rounded-lg transition-all duration-200">📝 Case 撰寫工具</a>
+          <a href="https://amzeuseller.netlify.app/" target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-gray-100 hover:bg-amazon-orange/10 hover:text-amazon-dark rounded-lg transition-all duration-200">🇪🇺 新賣家準備工具</a>
+          <a href="https://eu-seller-toolkit.netlify.app/" target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-gray-100 hover:bg-amazon-orange/10 hover:text-amazon-dark rounded-lg transition-all duration-200">🛠️ 營運工具箱</a>
+          <a href="https://case-writer.netlify.app/" target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-gray-100 hover:bg-amazon-orange/10 hover:text-amazon-dark rounded-lg transition-all duration-200">📝 Case 撰寫工具</a>
         </div>
       </footer>
     </div>
