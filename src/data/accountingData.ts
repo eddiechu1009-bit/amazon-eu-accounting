@@ -182,7 +182,7 @@ export const feeExplainers: FeeItemExplainer[] = [
     description: '參加 Best Deal / Deal of the Day 等促銷活動的費用。⚠️ 收費結構亦已改為「每日固定費 + 促銷銷售額百分比（有上限）」，不再是單純一次性固定費。',
     descriptionEn: 'Fee for Best Deals, Deal of the Day, and similar events. The structure also moved to a daily fee plus a capped percentage of deal sales, rather than a single flat fee.' },
   { key: 'PeakSeasonFulfillmentFee', label: '旺季配送費（Q4）', labelEn: 'Peak Season Fulfillment Fee', category: 'fba',
-    description: '🚨 2026/10/15–2027/1/14 適用旺季配送費（涵蓋 FBA、EFN、UK→EU 遠端配送）。德國站小型與標準尺寸包裹平均每件增加約 €0.27。大型/笨重品與低價商品不適用。2027/1/15 起回到 2026 非旺季費率。',
+    description: '📌 2026/10/15–2027/1/14 適用旺季配送費（涵蓋 FBA、EFN、UK→EU 遠端配送）。德國站小型與標準尺寸包裹平均每件增加約 €0.27。大型/笨重品與低價商品不適用。2027/1/15 起回到 2026 非旺季費率。',
     descriptionEn: 'Peak season fulfillment fee applies 2026-10-15 to 2027-01-14 (FBA, EFN, and UK-to-EU remote fulfillment). In Germany, small and standard parcels rise by an average of EUR 0.27 per unit. Large/bulky and low-price items are excluded. Rates revert to 2026 non-peak levels on 2027-01-15.',
     formula: '依尺寸分級加收；判定基準為「出貨日」而非下單日', formulaEn: 'Surcharge by size tier; determined by ship date, not order date' },
 

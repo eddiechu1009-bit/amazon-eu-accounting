@@ -98,7 +98,7 @@ export default function InventoryAnalyzer() {
 
   const statusBadge = (s: RestockResult['status']) => {
     const map = {
-      urgent: { label: isEn ? 'URGENT' : '🚨 緊急', cls: 'bg-red-100 text-red-700' },
+      urgent: { label: isEn ? 'URGENT' : '📌 緊急', cls: 'bg-red-100 text-red-700' },
       soon: { label: isEn ? 'Restock Soon' : '⚠️ 即將補貨', cls: 'bg-yellow-100 text-yellow-700' },
       ok: { label: isEn ? 'OK' : '✅ 正常', cls: 'bg-green-100 text-green-700' },
       overstock: { label: isEn ? 'Overstock' : '📦 過多', cls: 'bg-blue-100 text-blue-700' },
@@ -154,7 +154,7 @@ export default function InventoryAnalyzer() {
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3 mb-6">
         <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-center">
           <div className="text-xl font-bold text-red-700">{counts.urgent}</div>
-          <div className="text-xs text-red-600">{isEn ? 'Urgent' : '🚨 緊急補貨'}</div>
+          <div className="text-xs text-red-600">{isEn ? 'Urgent' : '📌 緊急補貨'}</div>
         </div>
         <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 text-center">
           <div className="text-xl font-bold text-yellow-700">{counts.soon}</div>

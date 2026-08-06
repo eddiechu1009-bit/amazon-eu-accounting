@@ -151,7 +151,7 @@ export default function AdAnalyzer() {
           <div className="text-lg font-bold text-yellow-700 mt-1">{fmt(needsWork.reduce((s, k) => s + k.spend, 0))}</div>
         </div>
         <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-          <div className="text-sm font-semibold text-red-700 mb-1">🚨 {isEn ? 'Wasteful' : '燒錢關鍵字'} ({wasteful.length})</div>
+          <div className="text-sm font-semibold text-red-700 mb-1">📌 {isEn ? 'Wasteful' : '燒錢關鍵字'} ({wasteful.length})</div>
           <div className="text-xs text-red-600">{isEn ? 'No sales or ACoS > ' : '無銷售或 ACoS > '}{targetAcos * 2}%</div>
           <div className="text-lg font-bold text-red-700 mt-1">{fmt(wasteful.reduce((s, k) => s + k.spend, 0))}</div>
         </div>
@@ -161,7 +161,7 @@ export default function AdAnalyzer() {
       {wasteful.length > 0 && (
         <div className="bg-white rounded-xl border shadow-sm mb-6">
           <div className="px-4 py-3 bg-red-50 border-b border-red-100">
-            <h3 className="font-semibold text-red-700">🚨 {isEn ? 'Wasteful Keywords — Consider Negating' : '燒錢關鍵字 — 建議加入否定'}</h3>
+            <h3 className="font-semibold text-red-700">📌 {isEn ? 'Wasteful Keywords — Consider Negating' : '燒錢關鍵字 — 建議加入否定'}</h3>
             <p className="text-xs text-red-500 mt-0.5">{isEn ? 'These keywords are spending money without generating profitable sales' : '這些關鍵字在花錢但沒有產生有效銷售'}</p>
           </div>
           <div className="overflow-x-auto">

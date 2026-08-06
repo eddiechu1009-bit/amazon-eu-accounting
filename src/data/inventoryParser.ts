@@ -151,7 +151,7 @@ export function exportRestockCSV(results: RestockResult[], isEn: boolean) {
   const statusLabel = (s: RestockResult['status']) => {
     const map = isEn
       ? { urgent: 'URGENT', soon: 'Restock Soon', ok: 'OK', overstock: 'Overstock', 'no-sales': 'No Sales' }
-      : { urgent: '🚨 緊急補貨', soon: '⚠️ 即將需要補貨', ok: '✅ 正常', overstock: '📦 庫存過多', 'no-sales': '— 無銷量' };
+      : { urgent: '📌 緊急補貨', soon: '⚠️ 即將需要補貨', ok: '✅ 正常', overstock: '📦 庫存過多', 'no-sales': '— 無銷量' };
     return map[s];
   };
 
