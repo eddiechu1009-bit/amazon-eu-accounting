@@ -10,3 +10,18 @@
   from = "/*"
   to = "/index.html"
   status = 200
+
+# ─────────────────────────────────────────────────────────────
+# 發布控制（2026-08-10）
+# 只有 main 會部署到正式網址。日常改動推 dev，看過再合併進 main。
+# dev / 其他分支用 ignore="exit 0" 跳過部署（exit 0 = 判定無變更、不必部署），
+# 避免 push 就等於對外發布。
+# ─────────────────────────────────────────────────────────────
+[context.dev]
+  ignore = "exit 0"
+
+[context.branch-deploy]
+  ignore = "exit 0"
+
+[context.deploy-preview]
+  ignore = "exit 0"
