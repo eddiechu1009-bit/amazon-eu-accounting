@@ -151,7 +151,8 @@ function splitCSVLines(text: string, delimiter: string): { rows: string[][]; lin
       } else if (ch === '"') {
         inQuotes = false;
       } else {
-        if (ch === '\n') physical++;
+        // 引號內換行也要算列號：\r\n 算一次、單獨的 \r 或 \n 各算一次
+        if (ch === '\n' || (ch === '\r' && text[i + 1] !== '\n')) physical++;
         field += ch;
       }
     } else {
@@ -204,7 +205,7 @@ function normalizeAmountText(val: string): { body: string; neg: boolean } | null
   let marks = 0;
   if (/^\(.*\)$/.test(s)) { marks++; s = s.slice(1, -1).replace(CUR, ''); }
   if (s.startsWith('-') || s.startsWith('\u2212')) { marks++; s = s.slice(1).replace(CUR, ''); }
-  else if (s.startsWith('+')) s = s.slice(1);
+  else if (s.startsWith('+')) s = s.slice(1).replace(CUR, '');
   if (s.endsWith('-')) { marks++; s = s.slice(0, -1).replace(CUR, ''); }
   if (marks > 1 || !/^[\d.,]+$/.test(s)) return null;
   return { body: s, neg: marks === 1 };
