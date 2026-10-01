@@ -8,6 +8,8 @@ interface I18nContextType {
   t: (key: string) => string;
 }
 
+const LANG_KEY = 'eu-accounting-lang';
+
 const I18nContext = createContext<I18nContextType>(null!);
 
 export function useI18n() {
@@ -15,7 +17,14 @@ export function useI18n() {
 }
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [lang, setLang] = useState<Lang>('zh');
+  // 語言偏好要記住：原本重整就回中文
+  const [lang, setLangState] = useState<Lang>(() => {
+    try { return localStorage.getItem(LANG_KEY) === 'en' ? 'en' : 'zh'; } catch { return 'zh'; }
+  });
+  const setLang = (l: Lang) => {
+    setLangState(l);
+    try { localStorage.setItem(LANG_KEY, l); } catch { /* ignore */ }
+  };
   const t = (key: string) => (lang === 'en' ? en[key] : zh[key]) ?? key;
   return (
     <I18nContext.Provider value={{ lang, setLang, t }}>

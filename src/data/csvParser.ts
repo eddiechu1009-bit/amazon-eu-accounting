@@ -134,14 +134,43 @@ function findCol(raw: Record<string, string>, candidates: string[]): string {
   return '';
 }
 
+/**
+ * 解析金額字串。要同時吃得下三種寫法：
+ *   1,234.56  （英式千分位 + 小數點）
+ *   1.234,56  （歐式千分位 + 小數逗號）
+ *   1234,56 / 1234.56 / -12.34
+ * 舊版只做 replace(',', '.')（只換第一個逗號），'1,234.56' 會變成 '1.234.56'
+ * → parseFloat 得到 1.234，金額縮小一千倍。
+ */
 function parseAmount(val: string): number {
   if (!val) return 0;
-  const cleaned = val.replace(/[^0-9.\-,]/g, '').replace(',', '.');
-  const num = parseFloat(cleaned);
-  return isNaN(num) ? 0 : num;
+  let s = val.replace(/[^0-9.\-,]/g, '');
+  if (!s) return 0;
+  const neg = s.startsWith('-');
+  if (neg) s = s.slice(1);
+  const lastComma = s.lastIndexOf(',');
+  const lastDot = s.lastIndexOf('.');
+  let normalized: string;
+  if (lastComma === -1 && lastDot === -1) {
+    normalized = s;
+  } else if (lastComma > lastDot) {
+    // 逗號在後 → 逗號是小數點，點是千分位
+    normalized = s.replace(/\./g, '').replace(',', '.');
+  } else if (lastDot > lastComma) {
+    // 點在後 → 點是小數點，逗號是千分位
+    normalized = s.replace(/,/g, '');
+  } else {
+    normalized = s;
+  }
+  // 仍可能殘留多個小數點（例如異常輸入），只保留第一個
+  const parts = normalized.split('.');
+  if (parts.length > 2) normalized = parts[0] + '.' + parts.slice(1).join('');
+  const num = parseFloat(normalized);
+  if (isNaN(num)) return 0;
+  return neg ? -num : num;
 }
 
-function guessCategory(row: TransactionRow): FeeCategory {
+export function guessCategory(row: TransactionRow): FeeCategory {
   const desc = (row.amountDescription + ' ' + row.amountType + ' ' + row.transactionType).toLowerCase();
   if (/refund|return|reversal/i.test(desc)) return 'refund';
   if (/fba|fulfil|storage|removal|disposal|warehouse/i.test(desc)) return 'fba';

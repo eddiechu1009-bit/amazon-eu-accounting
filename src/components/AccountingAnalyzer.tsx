@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
 import { TransactionRow, AccountingSummary, FeeCategory, VATByCountry } from '../data/accountingTypes';
-import { parseSettlementCSV, summarizeTransactions } from '../data/csvParser';
+import { parseSettlementCSV, summarizeTransactions, guessCategory } from '../data/csvParser';
 import {
   feeCategories,
   feeCategoryMap,
@@ -526,14 +526,20 @@ function DetailView({ rows, category, onBack, showUSD, rates }: {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   // 篩選該分類的交易
+  // 彙總卡用 matchExplainer，對不到就 guessCategory 兜底；明細頁必須用同一套邏輯，
+  // 否則「分類小計」會小於彙總卡的金額，而且不會告訴使用者少了哪些交易。
   const catRows = useMemo(() =>
     rows.filter((r) => {
       const exp = matchExplainer(r.amountDescription);
-      if (exp) return exp.category === category;
-      // fallback: 用 guessCategory 邏輯也納入
-      return false;
+      const cat = exp?.category ?? guessCategory(r);
+      return cat === category;
     }),
     [rows, category]);
+
+  // 有多少筆是「靠關鍵字兜底分類」而非對到已知科目 —— 要明講，不能默默混進去
+  const unmatchedCount = useMemo(
+    () => catRows.filter((r) => !matchExplainer(r.amountDescription)).length,
+    [catRows]);
 
   // 搜尋過濾
   const filtered = useMemo(() => {
@@ -614,6 +620,13 @@ function DetailView({ rows, category, onBack, showUSD, rates }: {
           </span>
         </div>
         <p className="text-xs text-gray-400 mt-1">{filtered.length} {t('txCount')}</p>
+        {unmatchedCount > 0 && (
+          <p className="text-xs text-amber-600 mt-1.5 leading-relaxed">
+            {isEn
+              ? `Note: ${unmatchedCount} of these transactions had no exact fee-item match and were classified by keyword. Their descriptions are shown as-is below — please confirm against Seller Central.`
+              : `注意：其中 ${unmatchedCount} 筆沒有對到已知科目，是依關鍵字歸類的。下方直接顯示原始科目字樣，請自行與後台核對。`}
+          </p>
+        )}
       </div>
 
       {/* 搜尋列 + 展開/收起 */}
