@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
 import { TransactionRow, AccountingSummary, FeeCategory, VATByCountry } from '../data/accountingTypes';
-import { parseSettlementCSV, summarizeTransactions, guessCategory } from '../data/csvParser';
+import { parseSettlementReport, summarizeTransactions, guessCategory, AmountWarning } from '../data/csvParser';
 import {
   feeCategories,
   feeCategoryMap,
@@ -45,6 +45,7 @@ export default function AccountingAnalyzer() {
   const [dragOver, setDragOver] = useState(false);
   const [fileName, setFileName] = useState('');
   const [error, setError] = useState('');
+  const [warnings, setWarnings] = useState<AmountWarning[]>([]);
   const [showUSD, setShowUSD] = useState(false);
   const [rates, setRates] = useState<ExchangeRates>({ ...defaultRates });
   const [showRatePanel, setShowRatePanel] = useState(false);
@@ -52,14 +53,21 @@ export default function AccountingAnalyzer() {
 
   const handleFile = useCallback(async (file: File) => {
     setError('');
+    setWarnings([]);
     setFileName(file.name);
     try {
       const text = await readFileAsText(file);
-      const parsed = parseSettlementCSV(text);
+      const result = parseSettlementReport(text);
+      const parsed = result.rows;
       if (parsed.length === 0) {
-        setError(isEn ? 'Unable to parse the file. Please confirm it is an Amazon Settlement Report.' : '無法解析檔案，請確認是 Amazon Settlement Report（支援 Excel 和 CSV/TSV 格式）。');
+        setError(result.warnings.length > 0
+          ? (isEn
+            ? `None of the amounts could be read with certainty (${result.warnings.length} rows, e.g. "${result.warnings[0].raw}"). Please check the number format in the original file.`
+            : `所有金額都無法確定怎麼讀（${result.warnings.length} 筆，例如「${result.warnings[0].raw}」），請到原檔確認數字格式。`)
+          : (isEn ? 'Unable to parse the file. Please confirm it is an Amazon Settlement Report.' : '無法解析檔案，請確認是 Amazon Settlement Report（支援 Excel 和 CSV/TSV 格式）。'));
         return;
       }
+      setWarnings(result.warnings);
       setRows(parsed);
       setSummary(summarizeTransactions(parsed));
       setViewMode('summary');
@@ -81,7 +89,7 @@ export default function AccountingAnalyzer() {
 
   const resetAll = () => {
     setRows([]); setSummary(null); setViewMode('upload');
-    setFileName(''); setError(''); setSelectedCategory(null);
+    setFileName(''); setError(''); setSelectedCategory(null); setWarnings([]);
   };
 
   // ─── 上傳畫面 ───────────────────────────────────────────
@@ -183,6 +191,7 @@ export default function AccountingAnalyzer() {
     return (
       <div>
         {usdPanel}
+        {warnings.length > 0 && <AmountWarningBanner warnings={warnings} isEn={isEn} />}
         <SummaryView summary={summary} fileName={fileName} onReset={resetAll} rows={rows}
           showUSD={showUSD} rates={rates}
           onViewDetail={(cat) => { setSelectedCategory(cat); setViewMode('detail'); }}
@@ -536,11 +545,6 @@ function DetailView({ rows, category, onBack, showUSD, rates }: {
     }),
     [rows, category]);
 
-  // 有多少筆是「靠關鍵字兜底分類」而非對到已知科目 —— 要明講，不能默默混進去
-  const unmatchedCount = useMemo(
-    () => catRows.filter((r) => !matchExplainer(r.amountDescription)).length,
-    [catRows]);
-
   // 搜尋過濾
   const filtered = useMemo(() => {
     if (!search.trim()) return catRows;
@@ -555,6 +559,11 @@ function DetailView({ rows, category, onBack, showUSD, rates }: {
       r.marketplace.toLowerCase().includes(q)
     );
   }, [catRows, search]);
+
+  // 目前顯示的交易中，有多少筆是「靠關鍵字兜底分類」而非對到已知科目 —— 要明講，不能默默混進去
+  const unmatchedCount = useMemo(
+    () => filtered.filter((r) => !matchExplainer(r.amountDescription)).length,
+    [filtered]);
 
   // 按科目分組
   const grouped = useMemo(() => {
@@ -623,8 +632,8 @@ function DetailView({ rows, category, onBack, showUSD, rates }: {
         {unmatchedCount > 0 && (
           <p className="text-xs text-amber-600 mt-1.5 leading-relaxed">
             {isEn
-              ? `Note: ${unmatchedCount} of these transactions had no exact fee-item match and were classified by keyword. Their descriptions are shown as-is below — please confirm against Seller Central.`
-              : `注意：其中 ${unmatchedCount} 筆沒有對到已知科目，是依關鍵字歸類的。下方直接顯示原始科目字樣，請自行與後台核對。`}
+              ? `Note: ${unmatchedCount} of the transactions shown had no exact fee-item match and were classified by keyword. Their descriptions are shown as-is below — please confirm against Seller Central.`
+              : `注意：目前顯示的交易中，有 ${unmatchedCount} 筆沒有對到已知科目，是依關鍵字歸類的。下方直接顯示原始科目字樣，請自行與後台核對。`}
           </p>
         )}
       </div>
@@ -994,4 +1003,38 @@ function formatWithUSD(val: number, currency: string, showUSD: boolean, rates: E
   if (!showUSD || currency?.toUpperCase() === 'USD') return base;
   const usd = toUSD(val, currency, rates);
   return `${base} (${formatCurrency(usd, 'USD')})`;
+}
+
+/** 匯入時金額無法確定的交易：沒有計入彙總，要讓使用者看到、到原檔確認 */
+function AmountWarningBanner({ warnings, isEn }: { warnings: AmountWarning[]; isEn: boolean }) {
+  const [open, setOpen] = useState(false);
+  const shown = warnings.slice(0, 50);
+  return (
+    <div className="mb-4 bg-amber-50 border border-amber-300 rounded-xl p-4 text-sm text-amber-900">
+      <p className="font-semibold">
+        {isEn
+          ? `⚠️ ${warnings.length} transaction(s) were NOT included in the totals because their amount could not be read with certainty.`
+          : `⚠️ 有 ${warnings.length} 筆交易的金額無法確定怎麼讀，沒有計入下方的彙總。`}
+      </p>
+      <p className="text-xs mt-1 leading-relaxed">
+        {isEn
+          ? 'For example "1,234" can mean 1234 (UK format) or 1.234 (EU format). Please check these rows in the original report, or re-export it from Seller Central without editing it in Excel.'
+          : '例如「1,234」在英國格式是 1234，在歐洲格式是 1.234。請到原始報表核對這些列，或從 Seller Central 重新下載、不要先用 Excel 改過再上傳。'}
+      </p>
+      <button type="button" onClick={() => setOpen(!open)} className="mt-2 text-xs underline">
+        {open ? (isEn ? 'Hide rows' : '收起明細') : (isEn ? 'Show rows' : '看是哪幾列')}
+      </button>
+      {open && (
+        <ul className="mt-2 text-xs font-mono space-y-0.5 max-h-60 overflow-auto">
+          {shown.map((w) => (
+            <li key={w.line}>
+              {isEn ? 'Row' : '第'} {w.line}{isEn ? '' : ' 列'} · 「{w.raw}」 · {w.reason === 'ambiguous' ? (isEn ? 'ambiguous format' : '格式有兩種讀法') : (isEn ? 'not a number' : '不是有效數字')}
+              {w.orderId ? ` · ${w.orderId}` : ''}{w.description ? ` · ${w.description}` : ''}
+            </li>
+          ))}
+          {warnings.length > shown.length && <li>… {isEn ? `and ${warnings.length - shown.length} more` : `還有 ${warnings.length - shown.length} 筆`}</li>}
+        </ul>
+      )}
+    </div>
+  );
 }

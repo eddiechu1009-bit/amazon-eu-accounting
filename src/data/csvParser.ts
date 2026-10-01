@@ -1,20 +1,39 @@
 import { TransactionRow, AccountingSummary, FeeCategory } from './accountingTypes';
 import { matchExplainer } from './accountingData';
 
+/** 匯入時無法確定的金額：不計入彙總，列給使用者到原檔確認 */
+export interface AmountWarning {
+  line: number;        // 檔案中的列號（含標題列，從 1 起算）
+  raw: string;         // 原始金額字串
+  reason: 'ambiguous' | 'invalid';
+  orderId: string;
+  description: string;
+}
+
+export interface ParseResult {
+  rows: TransactionRow[];
+  warnings: AmountWarning[];
+  numberFormat: NumberFormat | 'mixed' | 'unknown';
+}
+
 /**
  * 解析 CSV / TSV 文字內容為交易列陣列
  * 支援 Amazon Settlement Report 的 v2 flat file 格式
+ *
+ * 金額格式依報表語系而定（英國站 1,234.56；德法義西站 1.234,56）。
+ * 「1,234」「1.234」單看一格無法判斷，所以先掃整個金額欄判定格式，再逐格嚴格解析；
+ * 仍無法判定或格式不對的，不計入彙總、放進 warnings 讓使用者到原檔確認 —— 不會靜默當成 0 或截一半。
  */
-export function parseSettlementCSV(text: string): TransactionRow[] {
+export function parseSettlementReport(text: string): ParseResult {
   // 偵測分隔符號：tab 優先（Amazon 預設 TSV），否則用逗號
   const firstLine = text.split('\n')[0] ?? '';
   const delimiter = firstLine.includes('\t') ? '\t' : ',';
 
   const lines = splitCSVLines(text, delimiter);
-  if (lines.length < 2) return [];
+  if (lines.length < 2) return { rows: [], warnings: [], numberFormat: 'unknown' };
 
   const headers = lines[0].map((h) => h.trim().toLowerCase().replace(/["\s-]/g, ''));
-  const rows: TransactionRow[] = [];
+  const pending: { line: number; raw: Record<string, string>; amountStr: string }[] = [];
 
   for (let i = 1; i < lines.length; i++) {
     const cols = lines[i];
@@ -24,29 +43,51 @@ export function parseSettlementCSV(text: string): TransactionRow[] {
     headers.forEach((h, idx) => {
       raw[h] = (cols[idx] ?? '').trim().replace(/^"|"$/g, '');
     });
+    const amountStr = findCol(raw, ['amount', 'total', 'transactionamount', 'itemrelatedfeeamount', 'otheramount', 'directpaymentamount']);
+    pending.push({ line: i + 1, raw, amountStr });
+  }
 
-    const amount = parseAmount(
-      findCol(raw, ['amount', 'total', 'transactionamount', 'itemrelatedfeeamount', 'otheramount', 'directpaymentamount'])
-    );
+  const numberFormat = detectNumberFormat(
+    pending.map((p) => p.amountStr),
+    pending.map((p) => findCol(p.raw, ['marketplace', 'marketplacename', 'storename'])),
+  );
+  const fmt: NumberFormat | null = numberFormat === 'en' || numberFormat === 'eu' ? numberFormat : null;
+
+  const rows: TransactionRow[] = [];
+  const warnings: AmountWarning[] = [];
+  for (const { line, raw, amountStr } of pending) {
+    const orderId = findCol(raw, ['orderid', 'order id', 'amazonorderid']);
+    const amountDescription = findCol(raw, ['amountdescription', 'feedescription', 'description', 'chargedescription']);
+    const parsed = parseAmountStrict(amountStr, fmt);
+    if (parsed.value === null) {
+      warnings.push({ line, raw: amountStr, reason: parsed.reason ?? 'invalid', orderId, description: amountDescription });
+      continue;
+    }
+    const amount = parsed.value;
 
     // 跳過金額為 0 且無有意義資料的列
-    if (amount === 0 && !findCol(raw, ['orderId', 'orderid'])) continue;
+    if (amount === 0 && !orderId) continue;
 
     rows.push({
       raw,
       date: findCol(raw, ['posteddate', 'posteddatetime', 'date', 'settlementstartdate', 'posteddt']),
-      orderId: findCol(raw, ['orderid', 'order id', 'amazonorderid']),
+      orderId,
       sku: findCol(raw, ['sku', 'merchantsku', 'sellersku']),
       transactionType: findCol(raw, ['transactiontype', 'type']),
       amountType: findCol(raw, ['amounttype', 'feetype', 'fufillmentid']),
-      amountDescription: findCol(raw, ['amountdescription', 'feedescription', 'description', 'chargedescription']),
+      amountDescription,
       amount,
       currency: findCol(raw, ['currency', 'currencycode', 'marketplacecurrency']) || 'EUR',
       marketplace: findCol(raw, ['marketplace', 'marketplacename', 'storename']),
     });
   }
 
-  return rows;
+  return { rows, warnings, numberFormat };
+}
+
+/** 舊介面：只回傳可確定金額的交易列 */
+export function parseSettlementCSV(text: string): TransactionRow[] {
+  return parseSettlementReport(text).rows;
 }
 
 /** 將交易列彙總為 AccountingSummary */
@@ -134,40 +175,91 @@ function findCol(raw: Record<string, string>, candidates: string[]): string {
   return '';
 }
 
+/** en：1,234.56（點是小數點）；eu：1.234,56（逗號是小數點） */
+export type NumberFormat = 'en' | 'eu';
+
+const RE_INT = /^\d+$/;
+const RE_DOT_DEC = /^\d+\.\d+$/;                     // 1234.56 / 1.234（也可能是歐式千分位）
+const RE_COMMA_DEC = /^\d+,\d+$/;                    // 1234,56 / 1,234（也可能是英式千分位）
+const RE_EN_GROUPED = /^\d{1,3}(,\d{3})+(\.\d+)?$/;  // 1,234 / 1,234,567.89
+const RE_EU_GROUPED = /^\d{1,3}(\.\d{3})+(,\d+)?$/;  // 1.234 / 1.234.567,89
+// 只認幣別代碼與符號；其他字母（例如 12abc）一律視為格式錯誤
+const CUR = /^(?:EUR|GBP|USD|SEK|PLN|CZK|TRY|DKK|CHF|€|£|\$)|(?:EUR|GBP|USD|SEK|PLN|CZK|TRY|DKK|CHF|€|£|\$)$/gi;
+
+/** 去掉幣別符號、空白（含不換行空白）、撇號千分位，並取出正負號（-12、12-、(12)） */
+function normalizeAmountText(val: string): { body: string; neg: boolean } | null {
+  let s = val.trim().replace(/[\s\u00a0\u202f'\u2019]/g, '').replace(CUR, '');
+  let neg = false;
+  if (/^\(.*\)$/.test(s)) { neg = true; s = s.slice(1, -1); }
+  if (s.startsWith('-') || s.startsWith('\u2212')) { neg = !neg; s = s.slice(1); }
+  else if (s.startsWith('+')) s = s.slice(1);
+  if (s.endsWith('-')) { neg = !neg; s = s.slice(0, -1); }
+  s = s.replace(CUR, '');
+  return s ? { body: s, neg } : null;
+}
+
+/** 這個金額字串本身透露的格式：en／eu／兩者皆可（either）／不合格式（invalid） */
+export function classifyAmount(val: string): NumberFormat | 'either' | 'invalid' | 'empty' {
+  if (!val.trim()) return 'empty';
+  const n = normalizeAmountText(val);
+  if (!n) return 'invalid';
+  const s = n.body;
+  if (RE_INT.test(s)) return 'either';
+  const en = RE_DOT_DEC.test(s) || RE_EN_GROUPED.test(s);
+  const eu = RE_COMMA_DEC.test(s) || RE_EU_GROUPED.test(s);
+  if (en && eu) return 'either';
+  if (en) return 'en';
+  if (eu) return 'eu';
+  return 'invalid';
+}
+
 /**
- * 解析金額字串。要同時吃得下三種寫法：
- *   1,234.56  （英式千分位 + 小數點）
- *   1.234,56  （歐式千分位 + 小數逗號）
- *   1234,56 / 1234.56 / -12.34
- * 舊版只做 replace(',', '.')（只換第一個逗號），'1,234.56' 會變成 '1.234.56'
- * → parseFloat 得到 1.234，金額縮小一千倍。
+ * 判定整欄的數字格式：先看金額欄有沒有只可能是某一種格式的值（例如 12,50 或 1,234.56）；
+ * 整欄都只有歧義值時，才退回看 marketplace（amazon.co.uk → en；amazon.de/fr/it/es → eu）。
  */
-function parseAmount(val: string): number {
-  if (!val) return 0;
-  let s = val.replace(/[^0-9.\-,]/g, '');
-  if (!s) return 0;
-  const neg = s.startsWith('-');
-  if (neg) s = s.slice(1);
-  const lastComma = s.lastIndexOf(',');
-  const lastDot = s.lastIndexOf('.');
-  let normalized: string;
-  if (lastComma === -1 && lastDot === -1) {
-    normalized = s;
-  } else if (lastComma > lastDot) {
-    // 逗號在後 → 逗號是小數點，點是千分位
-    normalized = s.replace(/\./g, '').replace(',', '.');
-  } else if (lastDot > lastComma) {
-    // 點在後 → 點是小數點，逗號是千分位
-    normalized = s.replace(/,/g, '');
-  } else {
-    normalized = s;
+export function detectNumberFormat(values: string[], marketplaces: string[] = []): NumberFormat | 'mixed' | 'unknown' {
+  let en = 0, eu = 0;
+  for (const v of values) {
+    const c = classifyAmount(v);
+    if (c === 'en') en++;
+    else if (c === 'eu') eu++;
   }
-  // 仍可能殘留多個小數點（例如異常輸入），只保留第一個
-  const parts = normalized.split('.');
-  if (parts.length > 2) normalized = parts[0] + '.' + parts.slice(1).join('');
-  const num = parseFloat(normalized);
-  if (isNaN(num)) return 0;
-  return neg ? -num : num;
+  if (en && eu) return 'mixed';
+  if (en) return 'en';
+  if (eu) return 'eu';
+  const mk = marketplaces.join(' ').toLowerCase();
+  const ukHint = /amazon\.co\.uk/.test(mk);
+  const euHint = /amazon\.(de|fr|it|es|nl|se|pl|com\.be)\b/.test(mk);
+  if (ukHint && !euHint) return 'en';
+  if (euHint && !ukHint) return 'eu';
+  return 'unknown';
+}
+
+/**
+ * 嚴格解析金額。整串都要符合某一種數字寫法，不接受「前綴看起來像數字」的部分解析：
+ *   1,234.56 / 1.234,56 / 1234,56 / 1234.56 / -12.34 / (12.34) / 1,234,567 / 1.234.567
+ * 「1,234」「1.234」這種兩種讀法都通的，要靠 fmt（整欄判定的格式）決定；fmt 為 null 時回傳 ambiguous。
+ */
+export function parseAmountStrict(val: string, fmt: NumberFormat | null): { value: number | null; reason?: 'ambiguous' | 'invalid' } {
+  if (!val || !val.trim()) return { value: 0 };
+  const n = normalizeAmountText(val);
+  if (!n) return { value: null, reason: 'invalid' };
+  const s = n.body;
+
+  const asEn = (RE_INT.test(s) || RE_DOT_DEC.test(s) || RE_EN_GROUPED.test(s)) ? Number(s.replace(/,/g, '')) : null;
+  const asEu = (RE_INT.test(s) || RE_COMMA_DEC.test(s) || RE_EU_GROUPED.test(s)) ? Number(s.replace(/\./g, '').replace(',', '.')) : null;
+
+  let num: number | null;
+  if (asEn !== null && asEu !== null) {
+    if (asEn === asEu) num = asEn;
+    else if (fmt === 'en') num = asEn;
+    else if (fmt === 'eu') num = asEu;
+    else return { value: null, reason: 'ambiguous' };
+  } else {
+    num = asEn ?? asEu;
+  }
+  if (num === null || !Number.isFinite(num)) return { value: null, reason: 'invalid' };
+  return { value: n.neg ? -num : num };
 }
 
 export function guessCategory(row: TransactionRow): FeeCategory {
