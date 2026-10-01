@@ -60,6 +60,7 @@ export default function AccountingAnalyzer() {
       const result = parseSettlementReport(text);
       const parsed = result.rows;
       if (parsed.length === 0) {
+        setWarnings(result.warnings);
         setError(result.warnings.length > 0
           ? (isEn
             ? `None of the amounts could be read with certainty (${result.warnings.length} rows, e.g. "${result.warnings[0].raw}"). Please check the number format in the original file.`
@@ -119,6 +120,9 @@ export default function AccountingAnalyzer() {
 
         {error && (
           <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">⚠️ {error}</div>
+        )}
+        {error && warnings.length > 0 && (
+          <div className="mt-3"><AmountWarningBanner warnings={warnings} isEn={isEn} /></div>
         )}
 
         <div className="mt-8 bg-blue-50 border border-blue-200 rounded-xl p-5">

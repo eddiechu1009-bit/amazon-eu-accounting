@@ -29,7 +29,7 @@ export function parseSettlementReport(text: string): ParseResult {
   const firstLine = text.split('\n')[0] ?? '';
   const delimiter = firstLine.includes('\t') ? '\t' : ',';
 
-  const lines = splitCSVLines(text, delimiter);
+  const { rows: lines, lineNos } = splitCSVLines(text, delimiter);
   if (lines.length < 2) return { rows: [], warnings: [], numberFormat: 'unknown' };
 
   const headers = lines[0].map((h) => h.trim().toLowerCase().replace(/["\s-]/g, ''));
@@ -44,7 +44,7 @@ export function parseSettlementReport(text: string): ParseResult {
       raw[h] = (cols[idx] ?? '').trim().replace(/^"|"$/g, '');
     });
     const amountStr = findCol(raw, ['amount', 'total', 'transactionamount', 'itemrelatedfeeamount', 'otheramount', 'directpaymentamount']);
-    pending.push({ line: i + 1, raw, amountStr });
+    pending.push({ line: lineNos[i], raw, amountStr });
   }
 
   const numberFormat = detectNumberFormat(
@@ -58,6 +58,10 @@ export function parseSettlementReport(text: string): ParseResult {
   for (const { line, raw, amountStr } of pending) {
     const orderId = findCol(raw, ['orderid', 'order id', 'amazonorderid']);
     const amountDescription = findCol(raw, ['amountdescription', 'feedescription', 'description', 'chargedescription']);
+    if (!amountStr.trim()) {
+      if (orderId) warnings.push({ line, raw: amountStr, reason: 'invalid', orderId, description: amountDescription });
+      continue;
+    }
     const parsed = parseAmountStrict(amountStr, fmt);
     if (parsed.value === null) {
       warnings.push({ line, raw: amountStr, reason: parsed.reason ?? 'invalid', orderId, description: amountDescription });
@@ -128,8 +132,12 @@ export function summarizeTransactions(rows: TransactionRow[]): AccountingSummary
 
 // ─── 內部工具函式 ─────────────────────────────────────────────
 
-function splitCSVLines(text: string, delimiter: string): string[][] {
+/** 回傳每一筆紀錄，以及它在檔案中的實際起始列號（1 起算；空白行、引號內換行都會算進去） */
+function splitCSVLines(text: string, delimiter: string): { rows: string[][]; lineNos: number[] } {
   const result: string[][] = [];
+  const lineNos: number[] = [];
+  let physical = 1;
+  let startLine = 1;
   let current: string[] = [];
   let field = '';
   let inQuotes = false;
@@ -143,6 +151,7 @@ function splitCSVLines(text: string, delimiter: string): string[][] {
       } else if (ch === '"') {
         inQuotes = false;
       } else {
+        if (ch === '\n') physical++;
         field += ch;
       }
     } else {
@@ -155,16 +164,18 @@ function splitCSVLines(text: string, delimiter: string): string[][] {
         if (ch === '\r' && text[i + 1] === '\n') i++;
         current.push(field);
         field = '';
-        if (current.some((c) => c.trim())) result.push(current);
+        if (current.some((c) => c.trim())) { result.push(current); lineNos.push(startLine); }
         current = [];
+        physical++;
+        startLine = physical;
       } else {
         field += ch;
       }
     }
   }
   current.push(field);
-  if (current.some((c) => c.trim())) result.push(current);
-  return result;
+  if (current.some((c) => c.trim())) { result.push(current); lineNos.push(startLine); }
+  return { rows: result, lineNos };
 }
 
 function findCol(raw: Record<string, string>, candidates: string[]): string {
@@ -189,13 +200,14 @@ const CUR = /^(?:EUR|GBP|USD|SEK|PLN|CZK|TRY|DKK|CHF|€|£|\$)|(?:EUR|GBP|USD|S
 /** 去掉幣別符號、空白（含不換行空白）、撇號千分位，並取出正負號（-12、12-、(12)） */
 function normalizeAmountText(val: string): { body: string; neg: boolean } | null {
   let s = val.trim().replace(/[\s\u00a0\u202f'\u2019]/g, '').replace(CUR, '');
-  let neg = false;
-  if (/^\(.*\)$/.test(s)) { neg = true; s = s.slice(1, -1); }
-  if (s.startsWith('-') || s.startsWith('\u2212')) { neg = !neg; s = s.slice(1); }
+  // 負數只接受一種寫法：(12)、-12、12-；重複符號（(-12)、-12-）視為格式錯誤
+  let marks = 0;
+  if (/^\(.*\)$/.test(s)) { marks++; s = s.slice(1, -1).replace(CUR, ''); }
+  if (s.startsWith('-') || s.startsWith('\u2212')) { marks++; s = s.slice(1).replace(CUR, ''); }
   else if (s.startsWith('+')) s = s.slice(1);
-  if (s.endsWith('-')) { neg = !neg; s = s.slice(0, -1); }
-  s = s.replace(CUR, '');
-  return s ? { body: s, neg } : null;
+  if (s.endsWith('-')) { marks++; s = s.slice(0, -1).replace(CUR, ''); }
+  if (marks > 1 || !/^[\d.,]+$/.test(s)) return null;
+  return { body: s, neg: marks === 1 };
 }
 
 /** 這個金額字串本身透露的格式：en／eu／兩者皆可（either）／不合格式（invalid） */
@@ -205,8 +217,8 @@ export function classifyAmount(val: string): NumberFormat | 'either' | 'invalid'
   if (!n) return 'invalid';
   const s = n.body;
   if (RE_INT.test(s)) return 'either';
-  const en = RE_DOT_DEC.test(s) || RE_EN_GROUPED.test(s);
-  const eu = RE_COMMA_DEC.test(s) || RE_EU_GROUPED.test(s);
+  const en = (RE_DOT_DEC.test(s) || RE_EN_GROUPED.test(s)) && Number.isFinite(Number(s.replace(/,/g, '')));
+  const eu = (RE_COMMA_DEC.test(s) || RE_EU_GROUPED.test(s)) && Number.isFinite(Number(s.replace(/\./g, '').replace(',', '.')));
   if (en && eu) return 'either';
   if (en) return 'en';
   if (eu) return 'eu';
