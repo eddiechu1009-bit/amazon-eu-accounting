@@ -1032,7 +1032,7 @@ function AmountWarningBanner({ warnings, isEn }: { warnings: AmountWarning[]; is
         <ul className="mt-2 text-xs font-mono space-y-0.5 max-h-60 overflow-auto">
           {shown.map((w) => (
             <li key={w.line}>
-              {isEn ? 'Row' : '第'} {w.line}{isEn ? '' : ' 列'} · 「{w.raw}」 · {w.reason === 'ambiguous' ? (isEn ? 'ambiguous format' : '格式有兩種讀法') : (isEn ? 'not a number' : '不是有效數字')}
+              {isEn ? 'Row' : '第'} {w.line}{isEn ? '' : ' 列'} · 「{w.raw}」 · {w.reason === 'ambiguous' ? (isEn ? 'ambiguous format' : '格式有兩種讀法') : w.reason === 'empty' ? (isEn ? 'amount is blank' : '金額欄空白') : (isEn ? 'not a number' : '不是有效數字')}
               {w.orderId ? ` · ${w.orderId}` : ''}{w.description ? ` · ${w.description}` : ''}
             </li>
           ))}

@@ -5,7 +5,7 @@ import { matchExplainer } from './accountingData';
 export interface AmountWarning {
   line: number;        // 檔案中的列號（含標題列，從 1 起算）
   raw: string;         // 原始金額字串
-  reason: 'ambiguous' | 'invalid';
+  reason: 'ambiguous' | 'invalid' | 'empty';  // empty：交易列的金額欄是空白
   orderId: string;
   description: string;
 }
@@ -59,7 +59,11 @@ export function parseSettlementReport(text: string): ParseResult {
     const orderId = findCol(raw, ['orderid', 'order id', 'amazonorderid']);
     const amountDescription = findCol(raw, ['amountdescription', 'feedescription', 'description', 'chargedescription']);
     if (!amountStr.trim()) {
-      if (orderId) warnings.push({ line, raw: amountStr, reason: 'invalid', orderId, description: amountDescription });
+      // 只有結算摘要列（V2 首列：有 settlement-start-date／total-amount，沒有任何交易欄位）可以略過；
+      // 其他空金額列（例如沒有訂單號的 ServiceFee / Subscription）都列入警告，不計入彙總
+      if (!isSettlementSummaryRow(raw)) {
+        warnings.push({ line, raw: amountStr, reason: 'empty', orderId, description: amountDescription || findCol(raw, ['amounttype', 'transactiontype', 'type']) });
+      }
       continue;
     }
     const parsed = parseAmountStrict(amountStr, fmt);
@@ -179,6 +183,13 @@ function splitCSVLines(text: string, delimiter: string): { rows: string[][]; lin
   return { rows: result, lineNos };
 }
 
+/** Settlement Report V2 的摘要列：有結算期間或總額，但沒有交易類型、科目、訂單、SKU 等交易欄位 */
+function isSettlementSummaryRow(raw: Record<string, string>): boolean {
+  const txnFields = ['transactiontype', 'type', 'amounttype', 'feetype', 'amountdescription', 'feedescription', 'description', 'chargedescription', 'orderid', 'amazonorderid', 'merchantorderid', 'adjustmentid', 'shipmentid', 'sku', 'merchantsku', 'sellersku', 'posteddate', 'posteddatetime'];
+  if (txnFields.some((k) => (raw[k] ?? '') !== '')) return false;
+  return (raw['settlementstartdate'] ?? '') !== '' || (raw['totalamount'] ?? '') !== '';
+}
+
 function findCol(raw: Record<string, string>, candidates: string[]): string {
   for (const c of candidates) {
     const key = c.replace(/[\s-]/g, '').toLowerCase();
@@ -198,17 +209,18 @@ const RE_EU_GROUPED = /^\d{1,3}(\.\d{3})+(,\d+)?$/;  // 1.234 / 1.234.567,89
 // 只認幣別代碼與符號；其他字母（例如 12abc）一律視為格式錯誤
 const CUR = /^(?:EUR|GBP|USD|SEK|PLN|CZK|TRY|DKK|CHF|€|£|\$)|(?:EUR|GBP|USD|SEK|PLN|CZK|TRY|DKK|CHF|€|£|\$)$/gi;
 
-/** 去掉幣別符號、空白（含不換行空白）、撇號千分位，並取出正負號（-12、12-、(12)） */
+/** 去掉幣別符號、空白（含不換行空白）、撇號千分位，並取出正負號（+12、-12、−12、12-、(12)） */
 function normalizeAmountText(val: string): { body: string; neg: boolean } | null {
   let s = val.trim().replace(/[\s\u00a0\u202f'\u2019]/g, '').replace(CUR, '');
-  // 負數只接受一種寫法：(12)、-12、12-；重複符號（(-12)、-12-）視為格式錯誤
+  // 正負號只接受一種寫法：+12、-12、−12、12-、(12)；任何組合（+12-、(+12)、(-12)、-12-）視為格式錯誤
   let marks = 0;
-  if (/^\(.*\)$/.test(s)) { marks++; s = s.slice(1, -1).replace(CUR, ''); }
-  if (s.startsWith('-') || s.startsWith('\u2212')) { marks++; s = s.slice(1).replace(CUR, ''); }
-  else if (s.startsWith('+')) s = s.slice(1).replace(CUR, '');
-  if (s.endsWith('-')) { marks++; s = s.slice(0, -1).replace(CUR, ''); }
+  let neg = false;
+  if (/^\(.*\)$/.test(s)) { marks++; neg = true; s = s.slice(1, -1).replace(CUR, ''); }
+  if (s.startsWith('-') || s.startsWith('\u2212')) { marks++; neg = true; s = s.slice(1).replace(CUR, ''); }
+  else if (s.startsWith('+')) { marks++; s = s.slice(1).replace(CUR, ''); }
+  if (s.endsWith('-') || s.endsWith('\u2212')) { marks++; neg = true; s = s.slice(0, -1).replace(CUR, ''); }
   if (marks > 1 || !/^[\d.,]+$/.test(s)) return null;
-  return { body: s, neg: marks === 1 };
+  return { body: s, neg };
 }
 
 /** 這個金額字串本身透露的格式：en／eu／兩者皆可（either）／不合格式（invalid） */
