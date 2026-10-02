@@ -1017,8 +1017,8 @@ function AmountWarningBanner({ warnings, isEn }: { warnings: AmountWarning[]; is
     <div className="mb-4 bg-amber-50 border border-amber-300 rounded-xl p-4 text-sm text-amber-900">
       <p className="font-semibold">
         {isEn
-          ? `⚠️ ${warnings.length} transaction(s) were NOT included in the totals because their amount could not be read with certainty.`
-          : `⚠️ 有 ${warnings.length} 筆交易的金額無法確定怎麼讀，沒有計入下方的彙總。`}
+          ? `⚠️ ${warnings.length} transaction(s) were NOT included in the totals because their amount was blank or could not be read with certainty.`
+          : `⚠️ 有 ${warnings.length} 筆交易的金額空白或無法確定怎麼讀，沒有計入下方的彙總。`}
       </p>
       <p className="text-xs mt-1 leading-relaxed">
         {isEn
